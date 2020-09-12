@@ -99,13 +99,13 @@ def strcmp(s1,s2):
     return False
 
 def ascii(s):
-    s2 = ""
+    s2 = b''
     for c in s:
         if ord(c)<0x20 or ord(c)>0x7e:
-            s2 += "."
+            s2 += b'.'
         else:
-            s2 += c
-    return s2
+            s2 += bytes([c])
+    return s2.decode('utf-8')
 
 def pad(s,c,l):
     if len(s)<l:
@@ -117,12 +117,15 @@ def chexdump(s):
         print(("%08x  %s  %s  |%s|"%(i,pad(hexdump(s[i:i+8],' ')," ",23),pad(hexdump(s[i+8:i+16],' ')," ",23),pad(ascii(s[i:i+16])," ",16))))
 
 def getcstring(s):
-    s2 = ""
-    for c in s:
-        if c == "\x00":
+    s2 = b''
+    for d in s:
+        # Convert integer to current byte.
+        c = bytes([d])
+        if c == b'\x00':
             break
+        # Convert current byte to string and append.
         s2 += c
-    return s2
+    return s2.decode('utf-8')
 
 def align(n,a):
     if a == 0:
@@ -480,7 +483,7 @@ class WiiTik(WiiSigned):
     def parse(self):
         self.title_key_enc = self.body[0x7f:0x8f]
         self.title_id = self.body[0x9c:0xa4]
-        self.title_key_iv = self.title_id + "\x00"*8
+        self.title_key_iv = self.title_id + b"\x00"*8
         self.common_key_index = ord(self.body[0xb1:0xb2])
 
         try:
@@ -1389,7 +1392,7 @@ class WiiWad:
         certdata = self.f.read(self.cert_len)
         self.certlist = []
         self.certs = {}
-        while certdata != "":
+        while certdata != b'':
             cert = WiiCert(certdata)
             self.certs[cert.name] = cert
             self.certlist.append(cert)
@@ -1470,7 +1473,7 @@ class WiiWadMaker(WiiWad):
         self.tik_len = len(self.tik.data)
 
         # if boot2, set type to "ib"
-        if self.tmd.title_id == "\x00\x00\x00\x01\x00\x00\x00\x01":
+        if self.tmd.title_id == b"\x00\x00\x00\x01\x00\x00\x00\x01":
             if nandwad:
                 self.wadtype = 0
                 self.ALIGNMENT = 0
