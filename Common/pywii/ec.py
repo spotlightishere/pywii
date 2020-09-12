@@ -6,20 +6,16 @@
 
 from array import array
 from struct import pack, unpack
-try:
-    from Cryptodome.Util.number import bytes_to_long, long_to_bytes
-except ImportError:
-    from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 # y**2 + x*y = x**3 + x + b
-ec_b = "\x00\x66\x64\x7e\xde\x6c\x33\x2c\x7f\x8c\x09\x23\xbb\x58\x21"+\
-	   "\x3b\x33\x3b\x20\xe9\xce\x42\x81\xfe\x11\x5f\x7d\x8f\x90\xad"
+ec_b = b"\x00\x66\x64\x7e\xde\x6c\x33\x2c\x7f\x8c\x09\x23\xbb\x58\x21"+\
+	   b"\x3b\x33\x3b\x20\xe9\xce\x42\x81\xfe\x11\x5f\x7d\x8f\x90\xad"
 
 def hexdump(s,sep=""):
-	return sep.join(map(lambda x: "%02x"%ord(x),s))
+	return sep.join(["%02x"%ord(x) for x in s])
 
 def bhex(s,sep=""):
-	return hexdump(long_to_bytes(s,30),sep)
+	return hexdump(s.to_bytes(30, 'big'),sep)
 
 fastelt = False
 try:
@@ -29,46 +25,28 @@ except ImportError:
 	#print "C Elliptic Curve functions not available. EC certificate checking will be much slower."
 	pass
 
-
-class ByteArray(array):
-	def __new__(cls, initializer=None):
-		return super(ByteArray, cls)	.__new__(cls,'B',initializer)
-	def __init__(self,initializer=None):
-		array.__init__(self)
-	def __setitem__(self,item,value):
-		if isinstance(item, slice):
-			array.__setitem__(self, item, [x & 0xFF for x in value])
-		else:
-			array.__setitem__(self, item, value & 0xFF)
-	def __long__(self):
-		return bytes_to_long(self.tostring())
-	def __str__(self):
-		return ''.join(["%02x"%ord(x) for x in self.tostring()])
-	def __repr__(self):
-		return "ByteArray('%s')"%''.join(["\\x%02x"%ord(x) for x in self.tostring()])
-
 class ELT_PY:
 	SIZEBITS=233
 	SIZE=(SIZEBITS+7)/8
-	square = ByteArray("\x00\x01\x04\x05\x10\x11\x14\x15\x40\x41\x44\x45\x50\x51\x54\x55")
+	square = b"\x00\x01\x04\x05\x10\x11\x14\x15\x40\x41\x44\x45\x50\x51\x54\x55"
 	def __init__(self, initializer=None):
-		if isinstance(initializer, long) or isinstance(initializer, int):
-			self.d = ByteArray(long_to_bytes(initializer,self.SIZE))
+		if isinstance(initializer, int):
+			self.d = initializer.to_bytes(self.SIZE, 'big')
 		elif isinstance(initializer, str):
-			self.d = ByteArray(initializer)
-		elif isinstance(initializer, ByteArray):
-			self.d = ByteArray(initializer)
+			self.d = initializer.encode()
 		elif isinstance(initializer, array):
-			self.d = ByteArray(initializer)
+			self.d = bytearray(initializer)
+		elif isinstance(initializer, bytes):
+			self.d = initializer
 		elif isinstance(initializer, ELT):
-			self.d = ByteArray(initializer.d)
+			self.d = bytearray(initializer.d)
 		elif initializer is None:
-			self.d = ByteArray([0]*self.SIZE)
+			self.d = bytearray([0]*self.SIZE)
 		else:
 			raise TypeError("Invalid initializer type")
 		if len(self.d) != self.SIZE:
 			raise ValueError("ELT size must be 30")
-		
+
 	def __cmp__(self, other):
 		if other == 0: #exception
 			if self:
@@ -79,13 +57,13 @@ class ELT_PY:
 			return NotImplemented
 		return cmp(self.d,other.d)
 
-	def __long__(self):
-		return long(self.d)
+	def __int__(self):
+		return int(self.d)
 	def __repr__(self):
 		return repr(self.d).replace("ByteArray","ELT")
 	def __str__(self):
 		return str(self.d)
-	def __nonzero__(self):
+	def __bool__(self):
 		for x in self.d:
 			if x != 0:
 				return True
@@ -143,19 +121,19 @@ class ELT_PY:
 			wide[2*i + 1] = self.square[self[i] & 0xf]
 		for i in range(self.SIZE):
 			x = wide[i]
-	
+
 			wide[i + 19] ^= x >> 7;
 			wide[i + 20] ^= x << 1;
-	
+
 			wide[i + 29] ^= x >> 1;
 			wide[i + 30] ^= x << 7;
 		x = wide[30] & 0xFE;
-	
+
 		wide[49] ^= x >> 7;
 		wide[50] ^= x << 1;
-	
+
 		wide[59] ^= x >> 1;
-	
+
 		wide[30] &= 1;
 		return ELT(wide[self.SIZE:])
 	def _itoh_tsujii(self,b,j):
@@ -184,7 +162,7 @@ class ELT_PY:
 	def __setitem__(self,item,value):
 		self.d[item] = value
 	def tobignum(self):
-		return bytes_to_long(self.d.tostring())
+		return int.from_bytes(self.d, 'big')
 	def tobytes(self):
 		return self.d.tostring()
 
@@ -207,7 +185,7 @@ else:
 
 class Point:
 	def __init__(self,x,y=None):
-		if isinstance(x,str) and (y is None) and (len(x) == 60):
+		if (isinstance(x,str) or isinstance(x,bytes)) and (y is None) and (len(x) == 60):
 			self.x = ELT(x[:30])
 			self.y = ELT(x[30:])
 		elif isinstance(x,Point):
@@ -233,7 +211,7 @@ class Point:
 	def _double(self):
 		if self.x == 0:
 			return Point(0,0)
-		
+
 		s = self.y/self.x + self.x
 		rx = s**2 + s
 		rx[29] ^= 1;
@@ -253,17 +231,17 @@ class Point:
 				return self._double()
 			else:
 				return Point(0,0)
-	
+
 		s = (self.y + other.y) / u
 		t = s**2 + s + other.x
 		t[29] ^= 1
-	
+
 		rx = t+self.x
 		ry = s*t+self.y+rx
 		return Point(rx,ry)
-		
+
 	def __mul__(self, other):
-		bts = long_to_bytes(other,30)
+		bts = other.to_bytes(30, 'big')
 		d = Point(0,0)
 		for i in range(30):
 			mask = 0x80
@@ -276,10 +254,10 @@ class Point:
 	#def __mul__(self, other):
 		#if not (isinstance(other,long) or isinstance(other,int)):
 			#return NotImplemented
-		
+
 		#d = Point(0,0)
 		#s = Point(self)
-		
+
 		#while other != 0:
 			#if other & 1:
 				#d += s
@@ -292,7 +270,7 @@ class Point:
 		return "(%s,%s)"%(str(self.x),str(self.y))
 	def __repr__(self):
 		return "Point"+str(self)
-	def __nonzero__(self):
+	def __bool__(self):
 		return self.x or self.y
 	def tobytes(self):
 		return self.x.tobytes() + self.y.tobytes()
@@ -304,45 +282,45 @@ def bn_inv(a,N):
 
 
 # order of the addition group of points
-ec_N = bytes_to_long(
-			"\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"+\
-			"\x13\xe9\x74\xe7\x2f\x8a\x69\x22\x03\x1d\x26\x03\xcf\xe0\xd7")
+ec_N = int.from_bytes(
+			b"\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"+\
+			b"\x13\xe9\x74\xe7\x2f\x8a\x69\x22\x03\x1d\x26\x03\xcf\xe0\xd7", 'big')
 
 # base point
 ec_G = Point(
-	"\x00\xfa\xc9\xdf\xcb\xac\x83\x13\xbb\x21\x39\xf1\xbb\x75\x5f"+
-	"\xef\x65\xbc\x39\x1f\x8b\x36\xf8\xf8\xeb\x73\x71\xfd\x55\x8b"+
-	"\x01\x00\x6a\x08\xa4\x19\x03\x35\x06\x78\xe5\x85\x28\xbe\xbf"+
-	"\x8a\x0b\xef\xf8\x67\xa7\xca\x36\x71\x6f\x7e\x01\xf8\x10\x52")
+	b"\x00\xfa\xc9\xdf\xcb\xac\x83\x13\xbb\x21\x39\xf1\xbb\x75\x5f"+
+	b"\xef\x65\xbc\x39\x1f\x8b\x36\xf8\xf8\xeb\x73\x71\xfd\x55\x8b"+
+	b"\x01\x00\x6a\x08\xa4\x19\x03\x35\x06\x78\xe5\x85\x28\xbe\xbf"+
+	b"\x8a\x0b\xef\xf8\x67\xa7\xca\x36\x71\x6f\x7e\x01\xf8\x10\x52")
 
 def generate_ecdsa(k, sha):
-	k = bytes_to_long(k)
+	k = int.from_bytes(k, 'big')
 
 	if k >= ec_N:
 		raise Exception("Invalid private key")
 
-	e = bytes_to_long(sha)
+	e = int.from_bytes(sha, 'big')
 
 	m = open("/dev/random","rb").read(30)
 	if len(m) != 30:
 		raise Exception("Failed to get random data")
-	m = bytes_to_long(m) % ec_N
+	m = int.from_bytes(m, 'big') % ec_N
 
 	r = (m * ec_G).x.tobignum() % ec_N
 
 	kk = ((r*k)+e)%ec_N
 	s = (bn_inv(m,ec_N) * kk)%ec_N
 
-	r = long_to_bytes(r,30)
-	s = long_to_bytes(s,30)
+	r = r.to_bytes(30, 'big')
+	s = s.to_bytes(30, 'big')
 	return r,s
 
 def check_ecdsa(q,r,s,sha):
 
 	q = Point(q)
-	r = bytes_to_long(r)
-	s = bytes_to_long(s)
-	e = bytes_to_long(sha)
+	r = int.from_bytes(r, 'big')
+	s = int.from_bytes(s, 'big')
+	e = int.from_bytes(sha, 'big')
 
 	s_inv = bn_inv(s,ec_N)
 
@@ -356,7 +334,7 @@ def check_ecdsa(q,r,s,sha):
 	return rx == r
 
 def priv_to_pub(k):
-	k = bytes_to_long(k)
+	k = int.from_bytes(k, 'big')
 	q = k * ec_G
 	return q.tobytes()
 
@@ -365,6 +343,6 @@ def gen_priv_key():
 	if len(k) != 30:
 		raise Exception("Failed to get random data")
 
-	k = bytes_to_long(k)
+	k = int.from_bytes(k, 'big')
 	k = k % ec_N
-	return long_to_bytes(k,30)
+	return k.to_bytes(30, 'big')
