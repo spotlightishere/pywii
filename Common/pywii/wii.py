@@ -86,7 +86,7 @@ known_titles_noregion = {
 }
 
 def hexdump(s,sep=" "):
-    return sep.join(["%02x"%ord(x) for x in s])
+    return sep.join(["%02x"%x for x in s])
 
 def strcmp(s1,s2):
     clen = min(len(s1),len(s2))
