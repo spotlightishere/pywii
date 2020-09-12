@@ -36,7 +36,7 @@ def load_rsa_key(issuer):
 
 signkeyfuncs = [ load_rsa_key, load_rsa_key, None ]
 
-NULL_IV = "\x00"*16
+NULL_IV = b"\x00"*16
 
 keylist = [
     "common-key",
@@ -277,7 +277,7 @@ class WiiRSA(WiiPKAlgo):
         ldec = pow(lsig, self.e, self.n)
         dec = long_to_bytes(ldec)
         pad = len(signature) - len(dec)
-        dec = "\x00"*pad+dec
+        dec = b"\x00"*pad+dec
         return dec[-20:]
 
     def sign(self, data, key):
@@ -373,7 +373,7 @@ class WiiSigned:
 
     def update(self):
         self.data = pack(">I",self.sigtype+0x10000) + self.signature
-        self.data += "\x00" * (self.body_offset - len(self.data))
+        self.data += b"\x00" * (self.body_offset - len(self.data))
         self.data += self.body
 
     def parse(self):
@@ -391,7 +391,7 @@ class WiiSigned:
             raise ValueError("Signature type %s does not match certificate type %s!"%(sigtypes[self.sigtype],sigtypes[cert.key_type]))
         return cert.pkalgo.get_digest(self.sigtype, self.signature)
 
-    def brute_sha(self, match = "\x00", fillshort = None):
+    def brute_sha(self, match = b"\x00", fillshort = None):
         l = len(match)
 
         if fillshort is None:
@@ -411,7 +411,7 @@ class WiiSigned:
         if len(issuer) > 39:
             raise ValueError("issuer name too long!")
         self.issuer = issuer.split("-")
-        self.body = issuer + "\x00" * (0x40 - len(issuer)) + self.body[0x40:]
+        self.body = issuer + b"\x00" * (0x40 - len(issuer)) + self.body[0x40:]
         self.update()
 
     def update_signature(self, sig):
@@ -419,7 +419,7 @@ class WiiSigned:
         self.data = pack(">I",self.sigtype+0x10000) + self.signature + self.data[len(sig) + 4:]
 
     def null_signature(self):
-        self.signature = "\x00"*len(self.signature)
+        self.signature = b"\x00"*len(self.signature)
         self.data = pack(">I",self.sigtype+0x10000) + self.signature + self.data[len(self.signature) + 4:]
 
     def sign(self,certs):
@@ -758,7 +758,7 @@ class WiiPartition:
             cert.showsig(self.certs,it+"    ")
 
     def geth4hash(self):
-        return SHA.new(''.join(self.h3) + "\x00"*self.TAIL_H3).digest()
+        return SHA.new(''.join(self.h3) + b"\x00"*self.TAIL_H3).digest()
 
     def checkh4hash(self):
         return self.geth4hash() == self.tmd.get_content_records()[0].sha
@@ -922,7 +922,7 @@ class WiiPartition:
             if groupnum == self.data_groups and self.extra_group_blocks > 0 and len(data) == (self.extra_group_blocks * self.PLAIN_BLOCK_SIZE):
                 blocks = self.extra_group_blocks
                 writesize = blocks * self.CIPHER_BLOCK_SIZE
-                data += "\x00" * (self.PLAIN_BLOCK_SIZE * self.BLOCKS_PER_GROUP - blocks)
+                data += b"\x00" * (self.PLAIN_BLOCK_SIZE * self.BLOCKS_PER_GROUP - blocks)
             else:
                 raise ValueError("Attempted to write group past the end of the partition data")
         else:
@@ -954,11 +954,11 @@ class WiiPartition:
             for block in range(self.BLOCKS_PER_SUBGROUP):
                 shablock = ""
                 shablock += h0[subgroup][block]
-                shablock += "\x00"*20
+                shablock += b"\x00"*20
                 shablock += h1[subgroup]
-                shablock += "\x00"*32
+                shablock += b"\x00"*32
                 shablock += h2
-                shablock += "\x00"*32
+                shablock += b"\x00"*32
                 assert len(shablock) == self.SHA_SIZE, "sha block size messed up"
                 aes = AES.new(self.tik.title_key, AES.MODE_CBC, NULL_IV)
                 shablock = aes.encrypt(shablock)
@@ -1450,7 +1450,7 @@ class WiiWad:
                 if encrypted:
                     return data
 
-                iv = pack(">H",index)+"\x00"*14
+                iv = pack(">H",index)+b"\x00"*14
                 aes = AES.new(self.tik.title_key, AES.MODE_CBC, iv)
                 return aes.decrypt(data)[:ct.size]
 
@@ -1512,16 +1512,16 @@ class WiiWadMaker(WiiWad):
         cr.size = len(data)
         self.tmd.update_content_record(i,cr)
         if len(data)%16 != 0:
-            data += "\x00"*(16-len(data)%16)
+            data += b"\x00"*(16-len(data)%16)
         falign(self.f,0x40)
-        iv = pack(">H",cr.index)+"\x00"*14
+        iv = pack(">H",cr.index)+b"\x00"*14
         aes = AES.new(self.tik.title_key, AES.MODE_CBC, iv)
         self.f.write(aes.encrypt(data))
         falign(self.f,0x40)
 
     def adddata_encrypted(self, data):
         if len(data)%16 != 0:
-            data += "\x00"*(16-len(data)%16)
+            data += b"\x00"*(16-len(data)%16)
         falign(self.f,0x40)
         self.f.write(data)
         falign(self.f,0x40)
@@ -1534,7 +1534,7 @@ class WiiWadMaker(WiiWad):
         falign(self.f,self.ALIGNMENT)
         self.f.truncate()
         if pad:
-            self.f.write("\x00"*0x40)
+            self.f.write(b"\x00"*0x40)
         self.updatetmd()
         self.f.seek(0)
         if self.wadtype == 0:
@@ -1646,7 +1646,7 @@ class WiiFSTFile:
     def show(self, it=""):
         print(("%s%s @ 0x%x [0x%x]"%(it,self.name,self.off,self.size)))
     def generate(self, offset, stringoff, parent, dataoff, wiigcm=False):
-        stringdata = self.name + "\x00"
+        stringdata = self.name + b"\x00"
         off = self.off+dataoff
         if wiigcm:
             off >>= 2
@@ -1701,7 +1701,7 @@ class WiiFSTDir:
     def add(self,x):
         self.entries.append(x)
     def generate(self, offset, stringoff, parent, dataoff, wiigcm=False):
-        stringdata = self.name + "\x00"
+        stringdata = self.name + b"\x00"
         myoff = offset
         mysoff = stringoff
         stringoff+=len(stringdata)
